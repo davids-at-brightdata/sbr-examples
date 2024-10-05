@@ -1,61 +1,56 @@
 ﻿using Microsoft.Playwright;
 
-class Scraper
+string auth = Env("AUTH", "USER:PASS");
+string url = Env("TARGET_URL", "https://example.com");
+IPlaywright pw = await Playwright.CreateAsync();
+await using IBrowser browser = await ConnectAsync(pw, auth);
+await ScrapeAsync(browser, url);
+
+/// <summary>
+/// Connect to remote browser instance
+/// </summary>
+/// <param name="playwright">The playwright engine</param>
+/// <param name="auth">Authentication string - i.e USER:PASS</param>
+static async Task<IBrowser> ConnectAsync(IPlaywright playwright, string auth)
 {
-
-    private IPlaywright _pw;
-    private string _auth;
-
-    public Scraper(IPlaywright pw, string auth)
+    if (auth == "USER:PASS")
     {
-        _pw = pw;
-        _auth = auth;
+        throw new ArgumentException("Provide Scraping Browsers credentials in AUTH environment variable or update the script.");
     }
+    Console.WriteLine("Connecting to Browser...");
+    string endpointURL = $"wss://{auth}@brd.superproxy.io:9222";
+    return await playwright.Chromium.ConnectOverCDPAsync(endpointURL);
+}
 
-    private async Task<IBrowser> Connect()
+/// <summary>
+/// Scrape website with the browser instance
+/// </summary>
+/// <param name="browser">The browser instance</param>
+/// <param name="url">The url to go to</param>
+static async Task ScrapeAsync(IBrowser browser, string url)
+{
+    try
     {
-        if (_auth == "USER:PASS")
-        {
-            throw new Exception("Provide Scraping Browsers credentials in AUTH"
-                    + " environment variable or update the script.");
-        }
-        var endpointURL = $"wss://{_auth}@brd.superproxy.io:9222";
-        return await _pw.Chromium.ConnectOverCDPAsync(endpointURL);
+        Console.WriteLine($"Navigating to {url}...");
+        IPage page = await browser.NewPageAsync();
+        _ = await page.GotoAsync(url, new() { Timeout = 2 * 60 * 1000 });
+        await Task.Delay(TimeSpan.FromMinutes(2));
+        Console.WriteLine("Navigated! Scraping page content...");
+        string content = await page.ContentAsync();
+        Console.WriteLine($"Scraped! Data: {content}");
     }
-
-    public async Task Scrape(string url)
+    catch (Exception e)
     {
-        Log("Connecting to Browser...");
-        var browser = await Connect();
-        try {
-            Log($"Connected! Navigating to {url}...");
-            var page = await browser.NewPageAsync();
-            await page.GotoAsync(url, new (){ Timeout = 2 * 60 * 1000 });
-            Log("Navigated! Scraping page content...");
-            var data = await page.ContentAsync();
-            Log($"Scraped! Data: {data}");
-        } finally {
-            await browser.CloseAsync();
-        }
+        Console.Error.WriteLine(e.Message);
     }
+}
 
-    private static string Env(string name, string defaultValue)
-    {
-        return Environment.GetEnvironmentVariable(name) ?? defaultValue;
-    }
-
-    private static void Log(string message)
-    {
-        Console.WriteLine(message);
-    }
-
-    public static async Task Main()
-    {
-        var auth = Env("AUTH", "USER:PASS");
-        var url = Env("TARGET_URL", "https://example.com");
-        var pw = await Playwright.CreateAsync();
-        var scraper = new Scraper(pw, auth);
-        await scraper.Scrape(url);
-    }
-
+/// <summary>
+/// Load a variable from the environment if it exists, else use a default value.
+/// </summary>
+/// <param name="browser">The browser instance</param>
+/// <param name="url">The url to go to</param>
+static string Env(string name, string defaultValue)
+{
+    return Environment.GetEnvironmentVariable(name) ?? defaultValue;
 }
