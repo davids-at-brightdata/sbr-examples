@@ -34,7 +34,7 @@ static async Task ScrapeAsync(IBrowser browser, string url)
         Console.WriteLine($"Navigating to {url}...");
         IPage page = await browser.NewPageAsync();
         _ = await page.GotoAsync(url, new() { Timeout = 2 * 60 * 1000 });
-        await Task.Delay(TimeSpan.FromMinutes(2));
+        await Task.Delay(TimeSpan.FromMinutes(2)); // A little pause to be able to check the debugger
         Console.WriteLine("Navigated! Scraping page content...");
         string content = await page.ContentAsync();
         Console.WriteLine($"Scraped! Data: {content}");
