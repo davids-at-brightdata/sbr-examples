@@ -2,72 +2,63 @@
 using System.Net.WebSockets;
 using System.Text;
 
-class Scraper
+string auth = Env("AUTH", "USER:PASS");
+string url = Env("TARGET_URL", "https://example.com");
+await using IBrowser browser = await ConnectAsync(auth);
+await ScrapeAsync(browser, url);
+
+/// <summary>
+/// Connect to remote browser instance
+/// </summary>
+/// <param name="auth">Authentication string - i.e USER:PASS</param>
+static async Task<IBrowser> ConnectAsync(string auth)
 {
-
-    private string _auth;
-
-    public Scraper(string auth)
+    ConnectOptions options = new()
     {
-        _auth = auth;
-    }
-
-    private async Task<IBrowser> Connect()
-    {
-        if (_auth == "USER:PASS")
+        BrowserWSEndpoint = "wss://brd.superproxy.io:9222",
+        WebSocketFactory = async (uri, options, cToken) =>
         {
-            throw new Exception("Provide Scraping Browsers credentials in AUTH"
-                    + " environment variable or update the script.");
-        }
-        var options = new ConnectOptions()
-        {
-            BrowserWSEndpoint = "wss://brd.superproxy.io:9222",
-            WebSocketFactory = async (uri, options, cToken) =>
-            {
-                var socket = new ClientWebSocket();
-                var authBytes = Encoding.UTF8.GetBytes(_auth);
-                var authHeader = "Basic " + Convert.ToBase64String(authBytes);
-                socket.Options.SetRequestHeader("Authorization", authHeader);
-                socket.Options.KeepAliveInterval = TimeSpan.Zero;
-                await socket.ConnectAsync(uri, cToken);
-                return socket;
-            },
-        };
-        return await Puppeteer.ConnectAsync(options);
-    }
+            ClientWebSocket socket = new();
+            byte[] authBytes = Encoding.UTF8.GetBytes(auth);
+            string authHeader = "Basic " + Convert.ToBase64String(authBytes);
+            socket.Options.SetRequestHeader("Authorization", authHeader);
+            socket.Options.KeepAliveInterval = TimeSpan.Zero;
+            await socket.ConnectAsync(uri, cToken);
+            return socket;
+        },
+    };
+    return await Puppeteer.ConnectAsync(options);
+}
 
-    public async Task Scrape(string url)
+/// <summary>
+/// Scrape website with the browser instance
+/// </summary>
+/// <param name="browser">The browser instance</param>
+/// <param name="url">The url to go to</param>
+static async Task ScrapeAsync(IBrowser browser, string url)
+{
+    try
     {
-        Log("Connecting to Browser...");
-        var browser = await Connect();
-        try {
-            Log($"Connected! Navigating to {url}...");
-            var page = await browser.NewPageAsync();
-            await page.GoToAsync(url, /* timeout= */ 2 * 60 * 1000);
-            Log("Navigated! Scraping page content...");
-            var data = await page.GetContentAsync();
-            Log($"Scraped! Data: {data}");
-        } finally {
-            await browser.CloseAsync();
-        }
+        Console.WriteLine($"Navigating to {url}...");
+        IPage page = await browser.NewPageAsync();
+        _ = await page.GoToAsync(url, 2 * 60 * 1000);
+        await Task.Delay(TimeSpan.FromMinutes(2)); // A little pause to be able to check the debugger
+        Console.WriteLine("Navigated! Scraping page content...");
+        string content = await page.GetContentAsync();
+        Console.WriteLine($"Scraped! Data: {content}");
     }
-
-    private static string Env(string name, string defaultValue)
+    catch (Exception e)
     {
-        return Environment.GetEnvironmentVariable(name) ?? defaultValue;
+        Console.Error.WriteLine(e.Message);
     }
+}
 
-    private static void Log(string message)
-    {
-        Console.WriteLine(message);
-    }
-
-    public static async Task Main()
-    {
-        var auth = Env("AUTH", "USER:PASS");
-        var url = Env("TARGET_URL", "https://example.com");
-        var scraper = new Scraper(auth);
-        await scraper.Scrape(url);
-    }
-
+/// <summary>
+/// Load a variable from the environment if it exists, else use a default value.
+/// </summary>
+/// <param name="browser">The browser instance</param>
+/// <param name="url">The url to go to</param>
+static string Env(string name, string defaultValue)
+{
+    return Environment.GetEnvironmentVariable(name) ?? defaultValue;
 }
